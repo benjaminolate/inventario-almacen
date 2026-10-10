@@ -244,10 +244,10 @@ function seedExtras(){
     ],
     panMsg: "🍞 ¡Llegó el pan calentito! Marraquetas y hallullas recién salidas. Los esperamos en el almacén.",
     reservas: [
-      { id:uid(), name:"Rosa Muñoz", detail:"10 marraquetas", hora:"08:30", done:true },
-      { id:uid(), name:"Luis Pérez", detail:"6 hallullas", hora:"09:00", done:false },
-      { id:uid(), name:"Camila Rojas", detail:"1 kg de pan amasado", hora:"12:00", done:false },
-      { id:uid(), name:"Jorge Díaz", detail:"15 marraquetas", hora:"19:30", done:false }
+      { id:uid(), name:"Rosa Muñoz", detail:"10 marraquetas, 4 hallullas", at:atDay(0,7,40), done:true },
+      { id:uid(), name:"Luis Pérez", detail:"6 hallullas", at:atDay(0,8,15), done:false },
+      { id:uid(), name:"Camila Rojas", detail:"4 pan amasado, 2 dobladitas", at:atDay(0,9,5), done:false },
+      { id:uid(), name:"Jorge Díaz", detail:"15 marraquetas", at:atDay(0,10,20), done:false }
     ]
   };
 }
@@ -720,23 +720,24 @@ function openPan(){
 }
 
 // ---------- Reservas (vista previa) ----------
+const BREADS = ["Marraquetas","Hallullas","Pan amasado","Dobladitas","Pan integral"];
+const resDetail = q => BREADS.filter(b => q[b] > 0).map(b => `${q[b]} ${b.toLowerCase()}`).join(", ");
 function viewReservas(){
-  const rs = S.reservas.slice().sort((a,b) => a.hora.localeCompare(b.hora));
+  const rs = S.reservas.slice().sort((a,b) => (a.at||0) - (b.at||0));
+  const q = ui.resQty || (ui.resQty = {});
   const pend = rs.filter(r => !r.done).length;
   return `<header class="top"><button class="btn sm" data-go="mas">← Más</button><span class="pill warn">Próxima etapa</span></header>
   <div class="stack">
     <div><h2>Reservas de pan de hoy</h2><p class="small muted" style="margin:4px 0 0">${pend} por entregar. Toca una reserva para marcarla como entregada.</p></div>
-    <div class="card" style="padding-block:0"><div class="list">${rs.map(r => `<button class="item tap" data-res="${r.id}"><div class="main"><div class="name">${esc(r.name)}</div><div class="sub">${esc(r.detail)} · retira ${esc(r.hora)}</div></div>
+    <div class="card" style="padding-block:0"><div class="list">${rs.map(r => `<button class="item tap" data-res="${r.id}"><div class="main"><div class="name">${esc(r.name)}</div><div class="sub">${esc(r.detail)}${r.at ? " · reservó " + ago(r.at) : ""}</div></div>
       ${r.done ? `<span class="pill ok">Entregado</span>` : `<span class="pill warn">Pendiente</span>`}</button>`).join("")}</div></div>
     <div class="card stack">
       <h3>Así lo vería el cliente en su celular</h3>
       <div class="field"><label for="rn">Tu nombre</label><input class="input" id="rn" placeholder="Ej: Ana Torres"></div>
-      <div class="grid2">
-        <div class="field"><label for="rt">Pan</label><select class="input" id="rt"><option>Marraquetas</option><option>Hallullas</option><option>Pan amasado</option><option>Dobladitas</option></select></div>
-        <div class="field"><label for="rq">Cantidad</label><input class="input" id="rq" type="number" min="1" value="6" inputmode="numeric"></div>
-      </div>
-      <div class="field"><label for="rh">Hora de retiro</label><input class="input" id="rh" type="time" value="18:30"></div>
-      <button class="btn accent block" id="rsave">Reservar</button>
+      <div class="field"><label>¿Qué pan quieres?</label>
+        <div class="list">${BREADS.map(b => `<div class="item"><div class="main"><div class="name">${esc(b)}</div></div>
+          <div class="stepper"><button data-bdec="${esc(b)}" aria-label="Quitar ${esc(b)}">−</button><span>${q[b]||0}</span><button data-binc="${esc(b)}" aria-label="Agregar ${esc(b)}">+</button></div></div>`).join("")}</div></div>
+      <button class="btn accent block" id="rsave" ${Object.values(q).some(n => n > 0) ? "" : "disabled"}>Reservar${Object.values(q).some(n => n > 0) ? " (" + resDetail(q) + ")" : ""}</button>
       <p class="small muted" style="margin:0">En la versión final, el cliente abre un link desde el grupo de WhatsApp, reserva desde su casa y la reserva aparece al instante en el celular de la tienda.</p>
     </div>
   </div>`;
@@ -773,9 +774,13 @@ function render(){
   }
   if (v === "reservas"){
     app.querySelectorAll("[data-res]").forEach(b => b.onclick = () => { const r = S.reservas.find(r => r.id === b.dataset.res); r.done = !r.done; save(); render(); });
-    $("#rsave").onclick = () => { const name = $("#rn").value.trim(); if (!name){ $("#rn").focus(); return; }
-      const q = Math.max(1, parseInt($("#rq").value,10)||1);
-      S.reservas.push({ id:uid(), name, detail:`${q} ${$("#rt").value.toLowerCase()}`, hora:$("#rh").value || "—", done:false }); save(); render(); toast(`Reserva de ${name} recibida`); };
+    const rn = $("#rn"); rn.value = ui.resName || ""; rn.oninput = () => ui.resName = rn.value;
+    const step = (b, d) => { ui.resQty[b] = Math.max(0, (ui.resQty[b]||0) + d); const y = window.scrollY; render(); window.scrollTo(0, y); };
+    app.querySelectorAll("[data-binc]").forEach(x => x.onclick = () => step(x.dataset.binc, 1));
+    app.querySelectorAll("[data-bdec]").forEach(x => x.onclick = () => step(x.dataset.bdec, -1));
+    $("#rsave").onclick = () => { const name = rn.value.trim(); if (!name){ rn.focus(); toast("Escribe tu nombre"); return; }
+      const detail = resDetail(ui.resQty); if (!detail) return;
+      S.reservas.push({ id:uid(), name, detail, at:Date.now(), done:false }); ui.resQty = {}; ui.resName = ""; save(); render(); toast(`Reserva de ${name} recibida`); };
   }
   if (v === "inicio"){
     $("#reset").onclick = () => openModal(`<div class="stack"><h2>¿Reiniciar la demo?</h2><p style="margin:0">Se borran los cambios hechos y vuelven los datos de ejemplo.</p><div class="grid2"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="doreset">Reiniciar</button></div></div>`) || ($("#doreset").onclick = () => { S = buildSeed(); save(); ui.cart = []; ui.recv.items = []; ui.draft = {}; closeModal(); render(); toast("Demo reiniciada"); });
