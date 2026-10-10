@@ -135,6 +135,9 @@ nav.tabs button[aria-current="page"]{color:var(--brand)}
 "use strict";
 const KEY = "almacen-demo-v1";
 const H = 3600e3, D = 24*H;
+// Las reservas son del día: se borran solas a las 3 de la mañana
+const RES_CUT_HOUR = 3;
+
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const clp = n => "$" + Math.round(n).toLocaleString("es-CL");
@@ -227,6 +230,7 @@ function buildSeed(){
 }
 
 // Fiados, aviso del pan y reservas (datos de ejemplo)
+function resSeedAt(i){ const cut = resCutoff(), now = Date.now(); return Math.round(cut + (now - cut) * (i + 1) / 6); }
 function seedExtras(){
   return {
     clients: [
@@ -244,10 +248,10 @@ function seedExtras(){
     ],
     panMsg: "🍞 ¡Llegó el pan calentito! Marraquetas y hallullas recién salidas. Los esperamos en el almacén.",
     reservas: [
-      { id:uid(), name:"Rosa Muñoz", detail:"10 marraquetas, 4 hallullas", at:atDay(0,7,40), done:true },
-      { id:uid(), name:"Luis Pérez", detail:"6 hallullas", at:atDay(0,8,15), done:false },
-      { id:uid(), name:"Camila Rojas", detail:"4 pan amasado, 2 dobladitas", at:atDay(0,9,5), done:false },
-      { id:uid(), name:"Jorge Díaz", detail:"15 marraquetas", at:atDay(0,10,20), done:false }
+      { id:uid(), name:"Rosa Muñoz", detail:"10 marraquetas, 4 hallullas", at:resSeedAt(0), done:true },
+      { id:uid(), name:"Luis Pérez", detail:"6 hallullas", at:resSeedAt(1), done:false },
+      { id:uid(), name:"Camila Rojas", detail:"4 pan amasado, 2 dobladitas", at:resSeedAt(2), done:false },
+      { id:uid(), name:"Jorge Díaz", detail:"15 marraquetas", at:resSeedAt(3), done:false }
     ]
   };
 }
@@ -721,6 +725,8 @@ function openPan(){
 
 // ---------- Reservas (vista previa) ----------
 const BREADS = ["Marraquetas","Hallullas","Pan amasado","Dobladitas","Pan integral"];
+function resCutoff(){ const d = new Date(); d.setHours(RES_CUT_HOUR,0,0,0); if (d.getTime() > Date.now()) d.setDate(d.getDate()-1); return d.getTime(); }
+function purgeReservas(){ const cut = resCutoff(); const n = S.reservas.length; S.reservas = S.reservas.filter(r => r.at && r.at >= cut); if (S.reservas.length !== n) save(); }
 const resDetail = q => BREADS.filter(b => q[b] > 0).map(b => `${q[b]} ${b.toLowerCase()}`).join(", ");
 function viewReservas(){
   const rs = S.reservas.slice().sort((a,b) => (a.at||0) - (b.at||0));
@@ -728,7 +734,7 @@ function viewReservas(){
   const pend = rs.filter(r => !r.done).length;
   return `<header class="top"><button class="btn sm" data-go="mas">← Más</button><span class="pill warn">Próxima etapa</span></header>
   <div class="stack">
-    <div><h2>Reservas de pan de hoy</h2><p class="small muted" style="margin:4px 0 0">${pend} por entregar. Toca una reserva para marcarla como entregada.</p></div>
+    <div><h2>Reservas de pan de hoy</h2><p class="small muted" style="margin:4px 0 0">${pend} por entregar. Toca una reserva para marcarla como entregada. La lista se borra sola cada noche a las ${RES_CUT_HOUR}:00.</p></div>
     <div class="card" style="padding-block:0"><div class="list">${rs.map(r => `<button class="item tap" data-res="${r.id}"><div class="main"><div class="name">${esc(r.name)}</div><div class="sub">${esc(r.detail)}${r.at ? " · reservó " + ago(r.at) : ""}</div></div>
       ${r.done ? `<span class="pill ok">Entregado</span>` : `<span class="pill warn">Pendiente</span>`}</button>`).join("")}</div></div>
     <div class="card stack">
@@ -763,6 +769,7 @@ function bindSearch(onPick){
 }
 
 function render(){
+  purgeReservas();
   renderTabs();
   const v = ui.view, app = $("#app");
   app.innerHTML = ({ inicio:viewInicio, vender:viewVender, recibir:viewRecibir, contar:viewContar, productos:viewProductos, historial:viewHistorial, fiados:viewFiados, mas:viewMas, reservas:viewReservas })[v]();
