@@ -647,7 +647,13 @@ function viewHistorial(){
 // ---------- Fiados ----------
 const saldo = c => c.items.reduce((a,i) => a + (i.type === "fiado" ? i.amount : -i.amount), 0);
 function waPhone(p){ let d = String(p||"").replace(/\D/g, ""); if (d.length === 9 && d[0] === "9") d = "56" + d; else if (d.length === 8) d = "569" + d; return d; }
-function waLink(phone, text){ return "https://wa.me/" + (phone ? waPhone(phone) : "") + "?text=" + encodeURIComponent(text); }
+// En el celular se usa el enlace web (abre la app). En el computador se abre la app de escritorio directo, sin dejar una pestaña abierta.
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+function waQuery(phone, text){ return (phone ? "phone=" + waPhone(phone) + "&" : "") + "text=" + encodeURIComponent(text); }
+function waLink(phone, text){ return (IS_MOBILE ? "https://api.whatsapp.com/send?" : "whatsapp://send?") + waQuery(phone, text); }
+function waWeb(phone, text){ return "https://web.whatsapp.com/send?" + waQuery(phone, text); }
+const WA_TARGET = IS_MOBILE ? 'target="_blank" rel="noopener"' : "";
+const waWebNote = (id, phone, text) => IS_MOBILE ? "" : `<p class="small muted" style="margin:0">¿No tienes WhatsApp instalado en este computador? <a id="${id}" href="${esc(waWeb(phone, text))}" target="whatsapp-web" rel="noopener" style="color:var(--brand)">Usar WhatsApp Web</a></p>`;
 function viewFiados(){
   const cs = S.clients.slice().sort((a,b) => saldo(b) - saldo(a));
   const total = cs.reduce((a,c) => a + Math.max(0, saldo(c)), 0);
@@ -668,7 +674,8 @@ function openCliente(c){
   openModal(`<div class="stack">
     <div class="spread"><h2>${esc(c.name)}</h2><button class="btn ghost sm" data-close>Cerrar</button></div>
     <div class="spread"><div><div class="total">${clp(Math.max(0,s))}</div><div class="small muted">${s > 0 ? "saldo por pagar" : "al día"}${c.phone ? " · " + esc(c.phone) : ""}</div></div>
-      ${c.phone && s > 0 ? `<a class="btn sm" href="${esc(waLink(c.phone, msg))}" target="_blank" rel="noopener">Recordar por WhatsApp</a>` : ""}</div>
+      ${c.phone && s > 0 ? `<a class="btn sm" href="${esc(waLink(c.phone, msg))}" ${WA_TARGET}>Recordar por WhatsApp</a>` : ""}</div>
+    ${c.phone && s > 0 ? waWebNote("cweb", c.phone, msg) : ""}
     <div class="grid2">
       <div class="field"><label for="fm">Monto</label><input class="input" id="fm" type="number" inputmode="numeric" placeholder="0"></div>
       <div class="field"><label for="fn">Detalle (opcional)</label><input class="input" id="fn" placeholder="Ej: pan y leche"></div>
@@ -697,7 +704,8 @@ function openPan(){
   openModal(`<div class="stack">
     <div class="spread"><h2>Avisar que llegó el pan</h2><button class="btn ghost sm" data-close>Cerrar</button></div>
     <div class="field"><label for="pm">Mensaje</label><textarea class="input" id="pm" rows="3">${esc(S.panMsg)}</textarea></div>
-    <a class="btn primary block" id="pango" style="text-align:center;text-decoration:none" href="${esc(waLink("", S.panMsg))}" target="_blank" rel="noopener">Abrir WhatsApp</a>
+    <a class="btn primary block" id="pango" style="text-align:center;text-decoration:none" href="${esc(waLink("", S.panMsg))}" ${WA_TARGET}>Abrir WhatsApp</a>
+    ${waWebNote("panweb", "", S.panMsg)}
     <button class="btn block" id="pancopy">Copiar mensaje</button>
     <ol class="small muted" style="margin:0;padding-left:18px">
       <li>Se abre WhatsApp con el mensaje ya escrito.</li>
@@ -705,7 +713,7 @@ function openPan(){
     </ol>
     <p class="small muted" style="margin:0">El mensaje queda guardado para la próxima vez.</p>
   </div>`);
-  $("#pm").oninput = e => { S.panMsg = e.target.value; save(); $("#pango").href = waLink("", S.panMsg); };
+  $("#pm").oninput = e => { S.panMsg = e.target.value; save(); $("#pango").href = waLink("", S.panMsg); const w = $("#panweb"); if (w) w.href = waWeb("", S.panMsg); };
   $("#pancopy").onclick = () => { const t = $("#pm").value;
     const ok = () => toast("Mensaje copiado");
     try { navigator.clipboard.writeText(t).then(ok, () => { $("#pm").select(); toast("Selecciona y copia el texto"); }); } catch(e){ $("#pm").select(); } };
